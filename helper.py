@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import datetime
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -168,6 +169,22 @@ def main() -> int:
         interval = 60
 
     run_once = "--once" in sys.argv
+    is_child = "--child" in sys.argv
+
+    # If not invoked as a child and not explicitly asked to run once,
+    # daemonize by launching a nohup'd child and exit immediately.
+    if not is_child and not run_once:
+        script_path = Path(__file__).resolve()
+        # Build a command that launches this script in child mode, fully detached.
+        # We use bash -lc so we can background the process and echo the PID.
+        nohup_cmd = (
+            f"nohup {shlex.quote(sys.executable)} {shlex.quote(str(script_path))} --child "
+            "</dev/null >/dev/null 2>&1 & echo $!"
+        )
+        proc = run_command(["bash", "-lc", nohup_cmd], repo_root)
+        spawned_pid = (proc.stdout or "").strip().splitlines()[-1] if proc.stdout else ""
+        print(f"[info] Spawned background process PID {spawned_pid}")
+        return 0
 
     # Simple file lock to avoid concurrent runs
     lock_file = repo_root / ".auto_fetch_run.lock"
